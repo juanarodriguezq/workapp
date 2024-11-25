@@ -1,3 +1,5 @@
+#Bienvenidos al código de Workapp, el bot para buscar trabajo y hablar con Workie la IA al respecto :) 
+
 import telebot
 import requests
 import google.generativeai as genai
@@ -7,7 +9,7 @@ from telebot import types
 
 # Configuración API KEY Gemini y Telegram
 try:
-    os.environ["API_KEY"] = "AIzaSyBmEsrcoQO36YNfPGizkdjIo1IVqaPzHUg"
+    os.environ["API_KEY"] = "AIzaSyCUmTcXHVi1PKGBcsP2Pye7OfWD1CEjcCI"
     genai.configure(api_key=os.environ["API_KEY"])
 except Exception as e:
     print(f"Error al configurar la API de Gemini: {e}")
@@ -30,10 +32,14 @@ API_URL = "https://remotive.com/api/remote-jobs"
 import requests
 
 # Diccionario de áreas de trabajo y localidades disponibles para los botones
-AREAS_DE_TRABAJO = ['Design', 'Sales', 'Product', 'Customer Support', 'Marketing']
+AREAS_DE_TRABAJO = [
+    'Diseño', 'Ventas', 'Producto', 'Atención al cliente', 'Marketing'
+]
 
 # Localidades que son válidas según la API de Remotive
-LOCALIDADES = ['Worldwide', 'United States', 'UK', 'Canada', 'Germany', 'France']
+LOCALIDADES = [
+    'En todo el mundo', 'Estados Unidos', 'Inglaterra', 'Canada', 'Alemania', 'Francia'
+]
 
 # Variables para almacenar la selección de búsqueda
 seleccion_localidad = None
@@ -45,32 +51,50 @@ trabajos_mostrados_totales = []  # Para almacenar todos los trabajos mostrados
 # Historial de conversación con Workie (máximo 3 interacciones)
 historial_conversacion = {}
 
+
 # Función que hace la búsqueda de empleos y muestra los primeros 5 resultados
 def buscar_empleos(area_trabajo, localidad, mostrar_nuevos=True):
     global trabajos_mostrados_totales
     params = {
-        'category': area_trabajo,  # Cambié 'title' por 'category' para usar el parámetro adecuado
+        'category':
+        area_trabajo,  
         'location': localidad
     }
 
     try:
+        print(params)
         response = requests.get(API_URL, params=params)
-        response.raise_for_status()  # Lanza un error si la respuesta no es exitosa (status 200)
+        print(response)
+        response.raise_for_status(
+        )  # Lanza un error si la respuesta no es exitosa (status 200)
         data = response.json()
         jobs = data.get('jobs', [])
 
         # Filtramos para mostrar trabajos que no hayan sido mostrados previamente
         if mostrar_nuevos:
-            nuevos_trabajos = [job for job in jobs if job not in trabajos_mostrados_totales]
+            nuevos_trabajos = [
+                job for job in jobs if job not in trabajos_mostrados_totales
+            ]
         else:
             nuevos_trabajos = jobs
 
         if nuevos_trabajos:
-            result = "Aquí tienes 5 búsquedas activas:\n"
+            result = "¡Perfecto! Aquí tienes 5 búsquedas activas:\n"
             for i, job in enumerate(nuevos_trabajos[:5]):
-                result += f"{i + 1}. ✨ Título: {job.get('title')}\n"
-                result += f"   👉 Empresa: {job.get('company_name')}\n"
-                result += f"   📍 Localidad: {job.get('candidate_required_location')}\n"
+                job_type = ''
+                if job['job_type'] == 'full_time':
+                    job_type = 'Full Time'
+                elif job['job_type'] == 'part_time':
+                    job_type = 'Part Time'
+                elif job['job_type'] == 'contract':
+                    job_type = 'Contrato'
+                elif job['job_type'] == 'internship':
+                    job_type = 'Pasantia'
+                salary = job['salary'] if job['salary'] else "Sin especificar"
+                result += f"{i + 1}. ✨ Título: {job['title']}\n"
+                result += f"   👉 Empresa: {job['company_name']}\n"
+                result += f"   💸 Salario: {salary}\n"
+                result += f"   📍 Tipo de trabajo: {job_type}\n"
                 result += f"   🔗 Enlace: {job['url']}\n"
                 result += "-" * 5 + "\n"
             # Actualizamos la lista de trabajos mostrados
@@ -82,56 +106,75 @@ def buscar_empleos(area_trabajo, localidad, mostrar_nuevos=True):
         print(f"Error al hacer la solicitud a la API de Remotive: {e}")
         return "Hubo un error al conectar con la API de empleos. Intenta de nuevo.\n"
 
+
 # Función que muestra las opciones después de una respuesta de Workie
 def mostrar_opciones_workie(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                       one_time_keyboard=True)
     markup.add(types.KeyboardButton("Seguir hablando con Workie 🤖"))
-    markup.add(types.KeyboardButton("Buscar nuevos empleos 🔍"))
+    markup.add(types.KeyboardButton("Realizar nueva búsqueda 💡"))
     markup.add(types.KeyboardButton("Cerrar Workapp 👋"))
 
-    bot.send_message(
-        message.chat.id,
-        "¿Qué te gustaría hacer ahora?",
-        reply_markup=markup
-    )
+    bot.send_message(message.chat.id,
+                     "¿Qué te gustaría hacer ahora?",
+                     reply_markup=markup)
 
-    # Manejo de la opción "Buscar nuevos empleos 🔍"
-    @bot.message_handler(func=lambda m: m.text == "Buscar nuevos empleos 🔍")
-    def buscar_nuevos_empleos(message):
-        # Redirige al flujo de selección de localidad (comienza de nuevo)
-        # Reiniciamos las variables globales
-        global seleccion_localidad, seleccion_area_trabajo
-        seleccion_localidad = None
-        seleccion_area_trabajo = None
+    # Registrar el próximo paso para manejar la opción seleccionada
+    bot.register_next_step_handler(message, manejar_opciones_workie)
 
-        # Llamamos a la función de selección de localidad nuevamente
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        localidad_buttons = [types.KeyboardButton(localidad) for localidad in LOCALIDADES]
+
+def manejar_opciones_workie(message):
+    global seleccion_localidad, seleccion_area_trabajo
+
+    if message.text == "Seguir hablando con Workie 🤖":
+        # Continuar la conversación con Workie
+        bot.send_message(message.chat.id,
+                         "¡Genial! ¿Qué más te gustaría saber?")
+        bot.register_next_step_handler(message, procesar_pregunta_workie)
+
+    elif message.text == "Realizar nueva búsqueda 💡":
+        # Volver a empezar la búsqueda, mostrar las localidades
+    
+
+        # Crear el teclado de localidades para elegir nuevamente
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                           one_time_keyboard=True)
+        localidad_buttons = [
+            types.KeyboardButton(localidad) for localidad in LOCALIDADES
+        ]
         markup.add(*localidad_buttons)
 
+        bot.send_message(message.chat.id,"¡Qué bueno! Vamos a empezar desde cero. ¿Desde qué localidad te gustaría trabajar?",
+                        
+                         reply_markup=markup)
+
+        # Registrar el siguiente paso para manejar la selección de localidad
+        bot.register_next_step_handler(message, handle_localidad_selection)
+
+    elif message.text == "Cerrar Workapp 👋":
+        bot.send_message(message.chat.id,
+                         "Gracias por usar WorkApp 💛. ¡Te esperamos para continuar tu búsqueda laboral!")
+    else:
         bot.send_message(
             message.chat.id,
-            "¡Vamos a comenzar de nuevo! Primero, elige una localidad en la que quieras trabajar:",
-            reply_markup=markup
+            "No entendí tu respuesta. Por favor, selecciona una opción válida."
         )
-
-        # Registra el siguiente paso de la selección de localidad
-        bot.register_next_step_handler(message, handle_localidad_selection)
+        mostrar_opciones_workie(message)
 
 
 # Función que muestra las opciones de búsqueda después de obtener resultados de trabajos
 def mostrar_opciones(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                       one_time_keyboard=True)
     markup.add(types.KeyboardButton("Hablar con Workie 🤖"))
     markup.add(types.KeyboardButton("Buscar más empleos 🔍"))
     markup.add(types.KeyboardButton("Realizar una búsqueda nueva 💡"))
     markup.add(types.KeyboardButton("Cerrar Workapp 👋"))
 
-    bot.send_message(
-        message.chat.id,
-        "¿Qué te gustaría hacer ahora? 🤔",
-        reply_markup=markup
-    )
+    bot.send_message(message.chat.id,
+                     "¿Qué te gustaría hacer ahora? 🤔",
+                     reply_markup=markup)
+
 
 # Función para interactuar con Gemini (con reintentos y manejo de tiempo)
 def hablar_con_workie(pregunta, usuario_id):
@@ -156,7 +199,8 @@ def hablar_con_workie(pregunta, usuario_id):
             try:
                 respuesta = model.generate_content(contexto)
                 # Añadir la respuesta de Workie al historial
-                historial_conversacion[usuario_id].append(f"Workie: {respuesta.text}")
+                historial_conversacion[usuario_id].append(
+                    f"Workie: {respuesta.text}")
                 return respuesta.text
             except Exception as e:
                 print(f"Error al interactuar con Gemini: {e}")
@@ -167,22 +211,26 @@ def hablar_con_workie(pregunta, usuario_id):
         print(f"Error al generar contenido con Gemini: {e}")
         return "Hubo un error al interactuar con Workie. Intenta de nuevo más tarde. 😞"
 
+
 # Función que maneja el comando /start y muestra los botones de selección de localidad
 @bot.message_handler(commands=['start'])
 def enviar_bienvenida(message):
     # Crear un teclado con botones de localidades
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    localidad_buttons = [types.KeyboardButton(localidad) for localidad in LOCALIDADES]
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                       one_time_keyboard=True)
+    localidad_buttons = [
+        types.KeyboardButton(localidad) for localidad in LOCALIDADES
+    ]
     markup.add(*localidad_buttons)
 
     bot.send_message(
         message.chat.id,
-        "¡Te damos la bienvenida a WorkApp! Vamos a ayudarte con tu búsqueda de trabajo. Primero, elige una localidad en la que quieras trabajar:",
-        reply_markup=markup
-    )
+        "¡Te damos la bienvenida a WorkApp!💛 El bot que te ayuda con tu búsqueda de trabajo.🤓 Para empezar, elige desde qué localidad quieres trabajar",
+        reply_markup=markup)
 
     # Guardamos el paso actual (localidad) para usarlo en la siguiente fase
     bot.register_next_step_handler(message, handle_localidad_selection)
+
 
 # Función que maneja la selección de localidad
 def handle_localidad_selection(message):
@@ -190,18 +238,19 @@ def handle_localidad_selection(message):
     seleccion_localidad = message.text
 
     # Crear un teclado con botones de áreas de trabajo
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                       one_time_keyboard=True)
     area_buttons = [types.KeyboardButton(area) for area in AREAS_DE_TRABAJO]
     markup.add(*area_buttons)
 
     bot.send_message(
         message.chat.id,
-        f"¡Genial! Has seleccionado la localidad: {seleccion_localidad}. Ahora, ¿en qué área quieres trabajar?:",
-        reply_markup=markup
-    )
+        f"¡Genial! Te mostraremos empleos que estén habilitados para trabajar desde {seleccion_localidad}. Ahora, ¿en qué área quieres trabajar?",
+        reply_markup=markup)
 
     # Guardamos la localidad seleccionada para usarla después
     bot.register_next_step_handler(message, handle_area_selection)
+
 
 # Función que maneja la selección de área de trabajo
 def handle_area_selection(message):
@@ -215,32 +264,60 @@ def handle_area_selection(message):
     # Mostrar opciones para continuar la conversación
     mostrar_opciones(message)
 
+
 # Función que maneja las opciones seleccionadas por el usuario
-@bot.message_handler(func=lambda message: message.text in ["Hablar con Workie 🤖", "Buscar más empleos 🔍", "Realizar una búsqueda nueva 💡", "Cerrar Workapp 👋"])
+@bot.message_handler(func=lambda message: message.text in [
+    "Hablar con Workie 🤖", "Buscar más empleos 🔍",
+    "Realizar una búsqueda nueva 💡", "Cerrar Workapp 👋"
+])
 def manejar_opciones(message):
     global seleccion_localidad, seleccion_area_trabajo  # Asegurarnos de que las variables sean globales
 
     if message.text == "Hablar con Workie 🤖":
         # Iniciar conversación con Workie
-        bot.send_message(message.chat.id, "¡Hola, soy Workie!🤖 La IA que te acompañará en tu búsqueda laboral, ¿en qué puedo ayudarte hoy?")
+        bot.send_message(
+            message.chat.id,
+            "¡Hola, soy Workie!🤖 La IA que te acompañará en tu búsqueda laboral, ¿en qué puedo ayudarte hoy?"
+        )
         bot.register_next_step_handler(message, procesar_pregunta_workie)
 
     elif message.text == "Buscar más empleos 🔍":
         # Muestra otros 5 trabajos con la misma búsqueda, sin repetir los ya mostrados anteriormente
-        result = buscar_empleos(seleccion_area_trabajo, seleccion_localidad, mostrar_nuevos=True)
+        result = buscar_empleos(seleccion_area_trabajo,
+                                seleccion_localidad,
+                                mostrar_nuevos=True)
         bot.send_message(message.chat.id, result)
 
         # Muestra opciones nuevamente
         mostrar_opciones(message)
 
     elif message.text == "Realizar una búsqueda nueva 💡":
-        # Al presionar "Realizar una búsqueda nueva", se vuelve a pedir la localidad y área
-        handle_localidad_selection(message)
+        # Volver a empezar la búsqueda, mostrar las localidades
+
+        # Crear el teclado de localidades para elegir nuevamente
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True,
+                                           one_time_keyboard=True)
+        localidad_buttons = [
+            types.KeyboardButton(localidad) for localidad in LOCALIDADES
+        ]
+        markup.add(*localidad_buttons)
+
+        bot.send_message(message.chat.id,"¡Qué bueno! Vamos a empezar desde cero. ¿Desde qué localidad te gustaría trabajar?",
+                         
+                         reply_markup=markup)
+       
+
+        # Registrar el siguiente paso para manejar la selección de localidad
+        bot.register_next_step_handler(message, handle_localidad_selection)
 
     elif message.text == "Cerrar Workapp 👋":
         # Finalizar la conversación
-        bot.send_message(message.chat.id, "Qué lástima que tengamos que despedirnos.🥺 Gracias por usar WorkApp 💛 te esperamos para seguir acompañándote en tu búsqueda laboral. ¡Hasta pronto!👋")
+        bot.send_message(
+            message.chat.id,
+            "Qué lástima que tengamos que despedirnos.🥺 Gracias por usar WorkApp 💛 Te esperamos para seguir acompañándote en tu búsqueda laboral. ¡Hasta pronto!👋"
+        )
         return
+
 
 # Función para procesar preguntas a Workie (Gemini)
 def procesar_pregunta_workie(message):
@@ -251,12 +328,16 @@ def procesar_pregunta_workie(message):
     # Mostrar opciones para seguir conversando o finalizar
     mostrar_opciones_workie(message)
 
+
 # Función que maneja la opción de seguir hablando con Workie
-@bot.message_handler(func=lambda message: message.text == "Seguir hablando con Workie 🤖")
+@bot.message_handler(
+    func=lambda message: message.text == "Seguir hablando con Workie 🤖")
 def seguir_hablando_con_workie(message):
     # Responder con la frase de continuación
-    bot.send_message(message.chat.id, "¡Es una buena elección! ¿En qué más te puedo ayudar? 🤔")
+    bot.send_message(message.chat.id,
+                     "¡Es una buena elección! ¿En qué más te puedo ayudar? 🤔")
     bot.register_next_step_handler(message, procesar_pregunta_workie)
+
 
 # Inicia el bot
 try:
